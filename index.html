@@ -1,1 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zk-Vest PoC - Final Version</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        button { font-size: 16px; padding: 10px 20px; cursor: pointer; }
+        #status { margin-top: 20px; font-weight: bold; word-wrap: break-word; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
 
+    <h1>zk-Vest Proof of Concept</h1>
+    <p>This dApp requires the Sepolia Testnet.</p>
+
+    <button id="connectWalletBtn">1. Connect Wallet</button>
+    <button id="claimBtn" style="display:none;">2. Claim Tokens</button>
+    <p id="status">Status: Disconnected</p>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+
+    <script>
+        const connectWalletBtn = document.getElementById('connectWalletBtn');
+        const claimBtn = document.getElementById('claimBtn');
+        const statusEl = document.getElementById('status');
+
+        const sepoliaChainId = '0xaa36a7'; // Chain ID for Sepolia Testnet
+        const contractAddress = "0xE214A510a8Fd7c83ADb3821406128456d56bBF98";
+        const contractABI = ["function claimTokens(bytes memory proof, bytes32 publicSignal)"];
+
+        let signer;
+
+        // This function runs when the page loads to check the network
+        async function checkNetwork() {
+            if (window.ethereum) {
+                const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+                if (currentChainId !== sepoliaChainId) {
+                    statusEl.innerHTML = `Wrong Network! <br/> Please switch your wallet to the Sepolia Testnet.`;
+                    statusEl.classList.add('error');
+                    claimBtn.style.display = 'none'; // Hide claim button if on wrong network
+                    return false;
+                }
+                statusEl.classList.remove('error');
+                return true;
+            }
+            return false;
+        }
+
+        // Reloads the page if the network changes
+        if (window.ethereum) {
+            window.ethereum.on('chainChanged', (_chainId) => {
+                window.location.reload();
+            });
+        }
+        
+        // --- Wallet Connection Logic ---
+        connectWalletBtn.addEventListener('click', async () => {
+            if (typeof window.ethereum === 'undefined') {
+                return alert('MetaMask is not installed.');
+            }
+            try {
+                const isCorrectNetwork = await checkNetwork();
+                if (!isCorrectNetwork) return;
+
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                const address = await signer.getAddress();
+                
+                statusEl.innerText = `Connected: ${address}`;
+                connectWalletBtn.style.display = 'none';
+                claimBtn.style.display = 'block';
+            } catch (err) {
+                statusEl.innerText = 'Connection failed.';
+                console.error(err);
+            }
+        });
+
+        // --- Token Claiming Logic ---
+        claimBtn.addEventListener('click', async () => {
+            const isCorrectNetwork = await checkNetwork();
+            if (!signer || !isCorrectNetwork) {
+                return alert("Please connect your wallet on the Sepolia network first.");
+            }
+
+            statusEl.innerText = 'Status: Preparing transaction...';
+            try {
+                const contract = new ethers.Contract(contractAddress, contractABI, signer);
+                const publicSignal = "0x5f71b35168e370a4a9a01689c1d9b3240e4eaf9e1c23f2a8310323a6c23f15c1";
+                const proof = "0x" + "00".repeat(32);
+
+                const tx = await contract.claimTokens(proof, publicSignal);
+                
+                statusEl.innerText = "Transaction sent! Waiting for confirmation...";
+                await tx.wait();
+                
+                statusEl.innerText = "Success! Tokens claimed.";
+                alert("Success! The transaction was successful.");
+            } catch (error) {
+                console.error("--- TRANSACTION FAILED ---", error);
+                const reason = error.reason || "Transaction failed. Check console.";
+                statusEl.innerText = `Error: ${reason}`;
+            }
+        });
+
+        // Check the network as soon as the page loads
+        checkNetwork();
+    </script>
+</body>
+</html>
